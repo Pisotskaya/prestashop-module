@@ -39,12 +39,14 @@ class DayProductHelperForm extends HelperForm
          ];
 
          // Load current value
-         $this->fields_value['product'] = '';
-         $this->fields_value['start_date'] ='';
-         $this->fields_value['end_date'] ='';
-         $this->fields_value['discount_type'] ='';
-         $this->fields_value['discount_value'] ='';
-         $this->fields_value['description'] = '';
+         $this->fields_value = array(
+             'product'        => empty($module->preFill['product']) ? '' : $module->preFill['product'],
+             'from'           => empty($module->preFill['from']) ? '': $module->preFill['from'],
+             'to'             => empty($module->preFill['to']) ? '' : $module->preFill['to'],
+             'reduction_type' => empty($module->preFill['reduction_type']) ? '' : $module->preFill['reduction_type'],
+             'reduction'      => empty($module->preFill['reduction']) ? '' : $module->preFill['reduction'],
+             'description'    => empty($module->preFill['description']) ? '' : $module->preFill['description']
+         );
      }
 
     /**
@@ -86,14 +88,14 @@ class DayProductHelperForm extends HelperForm
                 [
                     'type' => 'text',
                     'label' => $this->l('Discount value:'),
-                    'name' => 'discount_value',
+                    'name' => 'reduction',
                     'desc' => $this->l('Choose a discount value'),
                     'required' => true
                 ],
                 [
                     'type' => 'select',
                     'label' => $this->l('Discount type:'),
-                    'name' => 'discount_type',
+                    'name' => 'reduction_type',
                     'desc' => $this->l('Choose a type of discount'),
                     'options' => array(
                         'query'=>array(
@@ -108,6 +110,7 @@ class DayProductHelperForm extends HelperForm
                     'tinymce' => true,
                     'autoload_rte' => true,
                     'required' => true,
+                    'value' =>'tutu',
                     'label' => $this->l('Description:'),
                     'name' => 'description',
                     'desc' => $this->l('Enter your promo-description')
@@ -131,12 +134,12 @@ class DayProductHelperForm extends HelperForm
         switch ($option) {
             case 'start date':
                 $labelValue = $this->l('From:');
-                $nameValue = 'start_date';
+                $nameValue = 'from';
                 $descValue = $this->l('Select the start date for display product');
                break;
             case 'final date':
                 $labelValue = $this->l('To:');
-                $nameValue = 'end_date';
+                $nameValue = 'to';
                 $descValue = $this->l('Select the final date for display product');
                 break;
         };

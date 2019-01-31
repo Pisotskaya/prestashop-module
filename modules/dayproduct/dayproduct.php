@@ -7,6 +7,7 @@ class DayProduct extends Module
 {
     private $idSpecificPrice = NULL;
     private $errors;
+    public  $preFill = array();
 
     public function __construct()
     {
@@ -18,13 +19,11 @@ class DayProduct extends Module
                               via admin-panel where you can specify the product special price and the offer expiration date.';
         $this->bootstrap = true;
         parent::__construct();
-       // $this->widgetTemplatePath = 'module:dayproduct/views/templates/hook/dayProductWidget.tpl';
     }
 
     public function install()
     {
-        if (!parent::install() ||
-            !$this->registerHook('displayHome')) {
+        if (!parent::install()) {
             return false;
         }
     }
@@ -32,8 +31,16 @@ class DayProduct extends Module
     public function getContent()
     {
         $confirmationMassage = $this->handleConfigurationForm();
-        $this->assignConfiguration();
-
+        if (!empty($this->assignConfiguration())) {
+            $assignConfiguration = $this->assignConfiguration();
+            $this->preFill = array(
+                'product'        => $assignConfiguration['id_product'],
+                'reduction'      => $assignConfiguration['reduction'],
+                'reduction_type' => $assignConfiguration['reduction_type'],
+                'from'           => $assignConfiguration['from'],
+                'to'             => $assignConfiguration['to'],
+                'description'    => Configuration::get('DESCRIPTION'));
+        }
         return  $confirmationMassage . $this->renderForm();
 
     }
@@ -53,14 +60,19 @@ class DayProduct extends Module
     public function assignConfiguration()
     {
         $isSpecificPrice = Configuration::get('ID_SPECIFIC_PRICE');
-        $specificPriceValues = $this->getSpecificPriceById($isSpecificPrice);
-        var_dump($isSpecificPrice); die();
-        if(!empty($specificPriceValues))
+        if(!empty($this->getSpecificPriceById($isSpecificPrice)))
         {
-         $this->context->smarty->assign('$x', $specificPriceValues);
+            $currentSpecificPrice = $this->getSpecificPriceById($isSpecificPrice);
+            $this->preFill = array(
+                'product'        => $currentSpecificPrice[0]['id_product'],
+                'reduction'      => $currentSpecificPrice[0]['reduction_type'] == 'percentage' ? $currentSpecificPrice[0]['reduction'] * 100 : $currentSpecificPrice[0]['reduction'],
+                'reduction_type' => $currentSpecificPrice[0]['reduction_type'],
+                'from'           => $currentSpecificPrice[0]['from'],
+                'to'             => $currentSpecificPrice[0]['to'],
+                'description'    => Configuration::get('DESCRIPTION'));
         }
-
     }
+
     /**
      * Handles form submit
      */
@@ -69,19 +81,25 @@ class DayProduct extends Module
         if (Tools::isSubmit('submit'.$this->name))
         {
             $formValues=[
-                'id_product'=> $this->getSelectedProductID(Tools::getValue('product')),
-                'from' => Tools::getValue('start_date'),
-                'to' => Tools::getValue('end_date'),
-                'reduction' => Tools::getValue('discount_value'),
-                'reduction_type' => Tools::getValue('discount_type')];
+                'id_product'=> Tools::getValue('product'),
+                'from' => Tools::getValue('from'),
+                'to' => Tools::getValue('to'),
+                'reduction' => Tools::getValue('reduction'),
+                'reduction_type' => Tools::getValue('reduction_type')];
 
             $validationResult = $this->validateSpecificPrice($formValues);
 
             if (true === $validationResult) {
+                $idCurrent = Configuration::get('ID_SPECIFIC_PRICE');
+                if(!empty($this->getSpecificPriceById($idCurrent)))
+                {
+                    $this->deleteSpecificPriceById($idCurrent);
+                }
                 $this->saveSpecificPrice($formValues);
+                $idSpecificPriceArray = SpecificPrice::getIdsByProductId($formValues['id_product']);
+                $this->idSpecificPrice = $idSpecificPriceArray[0]['id_specific_price'];
                 Configuration::updateValue('ID_SPECIFIC_PRICE', $this->idSpecificPrice);
                 Configuration::updateValue('DESCRIPTION', Tools::getValue('description'));
-
                 return $this->displayConfirmation('Settings updated :)');
             } else {
                 return $this->displayError($this->errors);
@@ -110,7 +128,7 @@ class DayProduct extends Module
 
         $specificPrice->add();
 
-        $this->idSpecificPrice = $this->getSpecificPriceId($specificPrice->id_product);
+        $this->idSpecificPrice = SpecificPrice::getIdsByProductId($formValues['id_product']);
 
     }
 
@@ -120,17 +138,15 @@ class DayProduct extends Module
             $this->errors = 'Enter the start and the and date, please';
         } elseif ($formValues['reduction'] && !Validate::isReductionType($formValues['reduction_type'])) {
             $this->errors = 'Please select a discount type (amount or percentage).';
-        }elseif ($formValues['reduction'] &&(!Validate::isPercentage($formValues['reduction'] || !(float)$formValues['reduction']))) {
+        }elseif (isset($formValues['reduction']) &&(!Validate::isPercentage($formValues['reduction'] || !(float)$formValues['reduction'])) || !Validate::isPrice($formValues['reduction'])) {
             $this->errors = 'Please enter the right discount amount';
         }elseif ((!isset($formValues['reduction'])) || (isset($formValues['reduction']) && !Validate::isPrice($formValues['reduction']))) {
             $this->errors = 'Invalid discount value';
         } elseif ($formValues['from'] && $formValues['to'] &&
             (!Validate::isDateFormat($formValues['from']) || !Validate::isDateFormat($formValues['to']))) {
             $this->errors = 'The from/to date is invalid.';
-
         } elseif ($formValues['from'] > $formValues['to']){
             $this->errors = 'Invalid date values';
-
         } elseif (!empty(SpecificPrice::getByProductId($formValues['id_product']))) {
             $this->errors = 'A specific price already exists for these product.';
         } else {
@@ -149,13 +165,6 @@ class DayProduct extends Module
             }
         }
     }
-    public function getSpecificPriceId($id_product)
-    {
-        return Db::getInstance(_PS_USE_SQL_SLAVE_)->executeS('
-			SELECT MAX(`id_specific_price`)
-			FROM `' . _DB_PREFIX_ . 'specific_price`
-			WHERE `id_product` = ' . (int) $id_product);
-    }
 
     public function getSpecificPriceById($id)
     {
@@ -164,14 +173,10 @@ class DayProduct extends Module
 			FROM `' . _DB_PREFIX_ . 'specific_price`
 			WHERE `id_specific_price` = ' . (int) $id);
     }
-
- /**   public function renderWidget($hookName, array $configuration)
+    public function deleteSpecificPriceById($id)
     {
-        $this->smarty->assign($this->getWidgetVariables($hookName, $configuration));
-        return $this->fetch($this->widgetTemplatePath);
+        return Db::getInstance()->execute('
+			DELETE FROM `' . _DB_PREFIX_ . 'specific_price`
+			WHERE id_specific_price=' . (int) $id);
     }
-    public function getWidgetVariables($hookName, array $configuration)
-    {
-
-    }**/
 }
